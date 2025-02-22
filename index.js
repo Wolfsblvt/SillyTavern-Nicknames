@@ -222,11 +222,15 @@ function registerNicknamesSlashCommands() {
     }));
 }
 
-// This function is called when the extension is loaded
-$(async () => {
+function registerNicknameMacros() {
     getContext().registerMacro('user', getUserNickname);
     getContext().registerMacro('char', getCharNickname);
+}
 
+// This function is called when the extension is loaded
+$(async () => {
     loadSettings();
     registerNicknamesSlashCommands();
+    registerNicknameMacros();
 });
+
