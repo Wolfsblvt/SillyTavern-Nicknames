@@ -31,6 +31,7 @@ async function loadSettings() {
     // Make sure all required objects exist
     loadedSettings.mappings ??= settings.mappings;
     loadedSettings.mappings.char ??= settings.mappings.char;
+    loadedSettings.mappings.char.personas ??= settings.mappings.char.personas;
     loadedSettings.mappings.global ??= settings.mappings.global;
     loadedSettings.mappings.global.personas ??= settings.mappings.global.personas;
     loadedSettings.mappings.global.chars ??= settings.mappings.global.chars;
@@ -47,11 +48,11 @@ function getCharKey() {
 }
 
 function getUserNickname() {
-    return getContext().name1;
+    return handleNickname('user');
 }
 
 function getCharNickname() {
-    return getContext().name2;
+    return handleNickname('char');
 }
 
 /**
@@ -71,51 +72,82 @@ function handleNickname(type, value = null, forContext = null, { reset = false }
     if (forContext && !['chat', 'char', 'global'].includes(forContext)) {
         throw new Error(`Unknown context: ${forContext}`);
     }
-
-    switch (forContext) {
-        case 'chat': {
-            getContext().chatMetadata ??= {};
-            const metadata = getContext().chatMetadata[SETTNGS_NAME] ??= {};
-
-            if (reset) {
-                delete metadata[type];
-                saveChatDebounced();
-            } else if (value) {
-                metadata[type] = value;
-                saveChatDebounced();
-            }
-            return metadata[type] || '';
-        }
-        case 'char': {
-            if (type === 'char') {
-                toastr.warning('Cannot set character nickname on character level', 'Nicknames');
-                return '';
-            }
-
-            if (reset) {
-                delete settings.mappings.char[getPersonaKey()];
-                saveSettingsDebounced();
-            } else if (value) {
-                settings.mappings.char[getPersonaKey()] = value;
-                saveSettingsDebounced();
-            }
-            return settings.mappings.char[getPersonaKey()] || '';
-        }
-        case 'global': {
-            const globalTypeKey = type === 'char' ? 'personas' : 'chars';
-            const nicknameKey = type === 'char' ? getCharKey() : getPersonaKey();
-
-            if (reset) {
-                delete settings.mappings.global[globalTypeKey][nicknameKey];
-                saveSettingsDebounced();
-            } else if (value) {
-                settings.mappings.global[globalTypeKey][nicknameKey] = value;
-                saveSettingsDebounced();
-            }
-            return settings.mappings.global[globalTypeKey][nicknameKey] || '';
-        }
-        default: throw new Error(`Unknown context: ${forContext}`);
+    if (!forContext && (value || reset)) {
+        throw new Error('Can\'t set nickanme or reset it without a context');
     }
+
+    if (forContext === 'chat' || !forContext) {
+        const metadata = getContext().chatMetadata[SETTNGS_NAME] ??= { chars: {}, personas: {} };
+        const chatTypeKey = type === 'char' ? 'personas' : 'chars';
+
+        // Reset -> return
+        if (reset) {
+            delete metadata[chatTypeKey][type];
+            saveChatDebounced();
+            return '';
+        }
+        // Set -> return
+        if (value) {
+            metadata[chatTypeKey][type] = value;
+            saveChatDebounced();
+            return value;
+        }
+        // Return if set
+        if (forContext || metadata[chatTypeKey][type]) {
+            return metadata[chatTypeKey][type];
+        }
+    }
+
+    if (forContext === 'char' || !forContext) {
+        if (type === 'char' && (value || reset)) {
+            toastr.warning('Cannot set character nickname on character level', 'Nicknames');
+            return '';
+        }
+
+        const nicknameKey = getPersonaKey();
+
+        // Reset -> return
+        if (reset) {
+            delete settings.mappings.char.personas[nicknameKey];
+            saveSettingsDebounced();
+            return '';
+        }
+        // Set -> return
+        if (value) {
+            settings.mappings.char.personas[nicknameKey] = value;
+            saveSettingsDebounced();
+            return value;
+        }
+        // Return if set
+        if (forContext || settings.mappings.char.personas[nicknameKey]) {
+            return settings.mappings.char.personas[nicknameKey];
+        }
+    }
+
+    if (forContext === 'global' || !forContext) {
+        const globalTypeKey = type === 'char' ? 'personas' : 'chars';
+        const nicknameKey = type === 'char' ? getCharKey() : getPersonaKey();
+
+        // Reset -> return
+        if (reset) {
+            delete settings.mappings.global[globalTypeKey][nicknameKey];
+            saveSettingsDebounced();
+            return '';
+        }
+        // Set -> return
+        if (value) {
+            settings.mappings.global[globalTypeKey][nicknameKey] = value;
+            saveSettingsDebounced();
+            return value;
+        }
+        // Return if set
+        if (forContext || settings.mappings.global[globalTypeKey][nicknameKey]) {
+            return settings.mappings.global[globalTypeKey][nicknameKey];
+        }
+    }
+
+    // Default, if no nickname is set, just return the current default names
+    return type === 'char' ? getContext().name2 : getContext().name1;
 }
 
 /** @type {(args: { for: ('char'|'chat'|'global')? }, nickname: string) => string} */
