@@ -7,16 +7,23 @@ import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '
 /** @type {string} Field name for the this extensions settings */
 const SETTNGS_NAME = 'nicknames';
 
+/**
+ * Settings object containing nickname mappings.
+ *
+ * @typedef {Object} NicknameSettings
+ * @property {Object} mappings - Collection of mappings between characters/personas and nicknames
+ * @property {{[charKey: string]: { personas: {[personaKey: string]: string}}}} mappings.char - Mapping of character keys to persona nicknames.
+ * @property {Object} mappings.global - Global mappings for personas and characters
+ * @property {{[personaKey: string]: string}} mappings.global.personas - Mapping of persona keys to a character nickname.
+ * @property {{[charKey: string]: string}} mappings.global.chars - Mapping of character keys to a persona nickname.
+ */
+
+/** @type {NicknameSettings} */
 let settings = {
     mappings: {
-        char: {
-            /** @type {{[personaKey: string]: string}} Mapping of persona keys to a char nickname */
-            personas: {},
-        },
+        char: {},
         global: {
-            /** @type {{[personaKey: string]: string}} Mapping of persona keys to a char nickname */
             personas: {},
-            /** @type {{[charKey: string]: string}} Mapping of char keys to a persona nickname */
             chars: {},
         },
     },
@@ -31,7 +38,6 @@ async function loadSettings() {
     // Make sure all required objects exist
     loadedSettings.mappings ??= settings.mappings;
     loadedSettings.mappings.char ??= settings.mappings.char;
-    loadedSettings.mappings.char.personas ??= settings.mappings.char.personas;
     loadedSettings.mappings.global ??= settings.mappings.global;
     loadedSettings.mappings.global.personas ??= settings.mappings.global.personas;
     loadedSettings.mappings.global.chars ??= settings.mappings.global.chars;
@@ -104,23 +110,25 @@ function handleNickname(type, value = null, forContext = null, { reset = false }
             return '';
         }
 
+        const charKey = getCharKey();
         const nicknameKey = getPersonaKey();
 
         // Reset -> return
         if (reset) {
-            delete settings.mappings.char.personas[nicknameKey];
+            delete settings.mappings.char[charKey]?.personas[nicknameKey];
             saveSettingsDebounced();
             return '';
         }
         // Set -> return
         if (value) {
-            settings.mappings.char.personas[nicknameKey] = value;
+            settings.mappings.char[charKey] ??= { personas: {} };
+            settings.mappings.char[charKey].personas[nicknameKey] = value;
             saveSettingsDebounced();
             return value;
         }
         // Return if set
-        if (forContext || settings.mappings.char.personas[nicknameKey]) {
-            return settings.mappings.char.personas[nicknameKey];
+        if (forContext || settings.mappings.char[charKey]?.personas[nicknameKey]) {
+            return settings.mappings.char[charKey]?.personas[nicknameKey];
         }
     }
 
@@ -156,7 +164,7 @@ function nicknameUserCallback(args, nickname) {
         toastr.error(`Unknown context: ${args.for}`, 'Nicknames');
         return '';
     }
-    return handleNickname('user', nickname, args.for || 'chat');
+    return handleNickname('user', nickname, args.for);
 }
 
 /** @type {(args: { for: ('char'|'chat'|'global')? }, nickname: string) => string} */
@@ -165,22 +173,22 @@ function nicknameCharCallback(args, nickname) {
         toastr.error(`Unknown context: ${args.for}`, 'Nicknames');
         return '';
     }
-    return handleNickname('char', nickname, args.for || 'chat');
+    return handleNickname('char', nickname, args.for);
 }
 
 function registerNicknamesSlashCommands() {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'nickname-user',
+        aliases: ['nickname-persona'],
         callback: nicknameUserCallback,
         returns: 'nickname of the current user',
         namedArgumentList: [
             SlashCommandNamedArgument.fromProps({
                 name: 'for',
-                description: 'At which context the nickname should be set',
+                description: 'The context for the nickname. Must be provided on set. If non provided for get, the actual used nickname (first defined) will be returned.',
                 typeList: [ARGUMENT_TYPE.STRING],
                 enumList: ['chat', 'char', 'global'],
                 forceEnum: true,
-                defaultValue: 'chat',
             }),
         ],
         unnamedArgumentList: [
@@ -198,11 +206,10 @@ function registerNicknamesSlashCommands() {
         namedArgumentList: [
             SlashCommandNamedArgument.fromProps({
                 name: 'for',
-                description: 'At which context the nickname should be set',
+                description: 'The context for the nickname. Must be provided on set. If non provided for get, the actual used nickname (first defined) will be returned.',
                 typeList: [ARGUMENT_TYPE.STRING],
                 enumList: ['chat', 'user', 'global'],
                 forceEnum: true,
-                defaultValue: 'chat',
             }),
         ],
         unnamedArgumentList: [
