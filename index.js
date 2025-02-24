@@ -3,6 +3,8 @@ import { saveChatDebounced, saveSettingsDebounced, user_avatar } from '../../../
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
+import { commonEnumProviders, enumIcons } from '../../../slash-commands/SlashCommandCommonEnumsProvider.js';
+import { enumTypes, SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumValue.js';
 
 /** @type {string} Field name for the this extensions settings */
 const SETTNGS_NAME = 'nicknames';
@@ -79,7 +81,7 @@ function handleNickname(type, value = null, forContext = null, { reset = false }
         throw new Error(`Unknown context: ${forContext}`);
     }
     if (!forContext && (value || reset)) {
-        throw new Error('Can\'t set nickanme or reset it without a context');
+        throw new Error('Can\'t set nickname or reset it without a context');
     }
 
     if (forContext === 'chat' || !forContext) {
@@ -160,21 +162,25 @@ function handleNickname(type, value = null, forContext = null, { reset = false }
 
 /** @type {(args: { for: ('char'|'chat'|'global')? }, nickname: string) => string} */
 function nicknameUserCallback(args, nickname) {
-    if (args.for && !['chat', 'char', 'global'].includes(args.for)) {
-        toastr.error(`Unknown context: ${args.for}`, 'Nicknames');
+    try {
+        return handleNickname('user', nickname, args.for, { reset: nickname === RESET_NICKNAME_LABEL });
+    } catch (error) {
+        toastr.error(`Error: ${error.message}`, 'Nicknames');
         return '';
     }
-    return handleNickname('user', nickname, args.for);
 }
 
 /** @type {(args: { for: ('char'|'chat'|'global')? }, nickname: string) => string} */
 function nicknameCharCallback(args, nickname) {
-    if (args.for && !['chat', 'char', 'global'].includes(args.for)) {
-        toastr.error(`Unknown context: ${args.for}`, 'Nicknames');
+    try {
+        return handleNickname('char', nickname, args.for, { reset: nickname === RESET_NICKNAME_LABEL });
+    } catch (error) {
+        toastr.error(`Error: ${error.message}`, 'Nicknames');
         return '';
     }
-    return handleNickname('char', nickname, args.for);
 }
+
+const RESET_NICKNAME_LABEL = '#reset';
 
 function registerNicknamesSlashCommands() {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
@@ -193,8 +199,19 @@ function registerNicknamesSlashCommands() {
         ],
         unnamedArgumentList: [
             SlashCommandArgument.fromProps({
-                description: 'the nickname',
+                description: 'The nickname to set (or \'#reset\' to remove the nickname)',
                 typeList: [ARGUMENT_TYPE.STRING],
+                enumList: [
+                    new SlashCommandEnumValue(RESET_NICKNAME_LABEL, 'Resets the nickname (removing it from this context)', enumTypes.enum, '❌'),
+                    new SlashCommandEnumValue(
+                        'a nickname',
+                        null,
+                        enumTypes.name,
+                        enumIcons.default,
+                        (input) => /^[\w\w]*$/.test(input),
+                        (input) => input,
+                    ),
+                ],
             }),
         ],
         helpString: 'Sets the nickname of the current user - or ',
@@ -214,8 +231,19 @@ function registerNicknamesSlashCommands() {
         ],
         unnamedArgumentList: [
             SlashCommandArgument.fromProps({
-                description: 'the nickname',
+                description: 'The nickname to set (or \'#reset\' to remove the nickname)',
                 typeList: [ARGUMENT_TYPE.STRING],
+                enumList: [
+                    new SlashCommandEnumValue(RESET_NICKNAME_LABEL, 'Resets the nickname (removing it from this context)', enumTypes.enum, '❌'),
+                    new SlashCommandEnumValue(
+                        'a nickname',
+                        null,
+                        enumTypes.name,
+                        enumIcons.default,
+                        (input) => /^[\w\w]*$/.test(input),
+                        (input) => input,
+                    ),
+                ],
             }),
         ],
         helpString: 'Sets the nickname of the current character - or ',
