@@ -1,16 +1,12 @@
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveChatDebounced, saveSettingsDebounced, user_avatar } from '../../../../script.js';
-import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
-import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
-import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
-import { enumIcons } from '../../../slash-commands/SlashCommandCommonEnumsProvider.js';
-import { enumTypes, SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumValue.js';
+import { registerNicknamesSlashCommands } from './nicknamesSlashCommands.js';
 
 /** @type {string} Field name for the this extensions settings */
 const SETTNGS_NAME = 'nicknames';
 
 /** @enum {string} The context levels at which nicknames can be set */
-const ContextLevel = {
+export const ContextLevel = {
     /** Set to global level, per account */
     GLOBAL: 'global',
     /** Set to character level (only available for personas) */
@@ -100,7 +96,7 @@ function getCharNickname() {
  *
  * @returns {NicknameResult?} The nickname value after handling
  */
-function handleNickname(type, value = null, forContext = null, { reset = false } = {}) {
+export function handleNickname(type, value = null, forContext = null, { reset = false } = {}) {
     value = value?.trim();
 
     if (forContext && !Object.values(ContextLevel).includes(forContext)) {
@@ -184,104 +180,6 @@ function handleNickname(type, value = null, forContext = null, { reset = false }
 
     // Default, if no nickname is set, just return the current default names
     return { context: ContextLevel.NONE, name: type === 'char' ? getContext().name2 : getContext().name1 };
-}
-
-/** @type {(args: { for: ('char'|'chat'|'global')? }, nickname: string) => string} */
-function nicknameUserCallback(args, nickname) {
-    try {
-        return handleNickname('user', nickname, args.for, { reset: nickname === RESET_NICKNAME_LABEL })?.name ?? '';
-    } catch (error) {
-        toastr.error(`Error: ${error.message}`, 'Nicknames');
-        return '';
-    }
-}
-
-/** @type {(args: { for: ('char'|'chat'|'global')? }, nickname: string) => string} */
-function nicknameCharCallback(args, nickname) {
-    try {
-        return handleNickname('char', nickname, args.for, { reset: nickname === RESET_NICKNAME_LABEL })?.name ?? '';
-    } catch (error) {
-        toastr.error(`Error: ${error.message}`, 'Nicknames');
-        return '';
-    }
-}
-
-const RESET_NICKNAME_LABEL = '#reset';
-
-function registerNicknamesSlashCommands() {
-    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: 'nickname-user',
-        aliases: ['nickname-persona'],
-        callback: nicknameUserCallback,
-        returns: 'nickname of the current user',
-        namedArgumentList: [
-            SlashCommandNamedArgument.fromProps({
-                name: 'for',
-                description: 'The context for the nickname. Must be provided on set. If non provided for get, the actual used nickname (first defined) will be returned.',
-                typeList: [ARGUMENT_TYPE.STRING],
-                enumList: [
-                    new SlashCommandEnumValue(ContextLevel.GLOBAL, null, enumTypes.namedArgument, 'G'),
-                    new SlashCommandEnumValue(ContextLevel.CHAR, null, enumTypes.enum, enumIcons.character),
-                    new SlashCommandEnumValue(ContextLevel.CHAT, null, enumTypes.enum, enumIcons.message),
-                ],
-                forceEnum: true,
-            }),
-        ],
-        unnamedArgumentList: [
-            SlashCommandArgument.fromProps({
-                description: 'The nickname to set (or \'#reset\' to remove the nickname)',
-                typeList: [ARGUMENT_TYPE.STRING],
-                enumList: [
-                    new SlashCommandEnumValue(RESET_NICKNAME_LABEL, 'Resets the nickname (removing it from this context)', enumTypes.enum, '❌'),
-                    new SlashCommandEnumValue(
-                        'a nickname',
-                        null,
-                        enumTypes.name,
-                        enumIcons.default,
-                        (input) => /^[\w\w]*$/.test(input),
-                        (input) => input,
-                    ),
-                ],
-            }),
-        ],
-        helpString: 'Sets the nickname of the current user - or ',
-    }));
-    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: 'nickname-char',
-        callback: nicknameCharCallback,
-        returns: 'nickname of the current character',
-        namedArgumentList: [
-            SlashCommandNamedArgument.fromProps({
-                name: 'for',
-                description: 'The context for the nickname. Must be provided on set. If non provided for get, the actual used nickname (first defined) will be returned.',
-                typeList: [ARGUMENT_TYPE.STRING],
-                enumList: [
-                    new SlashCommandEnumValue(ContextLevel.GLOBAL, null, enumTypes.namedArgument, 'G'),
-                    new SlashCommandEnumValue(ContextLevel.CHAR, null, enumTypes.enum, enumIcons.character),
-                    new SlashCommandEnumValue(ContextLevel.CHAT, null, enumTypes.enum, enumIcons.message),
-                ],
-                forceEnum: true,
-            }),
-        ],
-        unnamedArgumentList: [
-            SlashCommandArgument.fromProps({
-                description: 'The nickname to set (or \'#reset\' to remove the nickname)',
-                typeList: [ARGUMENT_TYPE.STRING],
-                enumList: [
-                    new SlashCommandEnumValue(RESET_NICKNAME_LABEL, 'Resets the nickname (removing it from this context)', enumTypes.enum, '❌'),
-                    new SlashCommandEnumValue(
-                        'a nickname',
-                        null,
-                        enumTypes.name,
-                        enumIcons.default,
-                        (input) => /^[\w\w]*$/.test(input),
-                        (input) => input,
-                    ),
-                ],
-            }),
-        ],
-        helpString: 'Sets the nickname of the current character - or ',
-    }));
 }
 
 function registerNicknameMacros() {
