@@ -107,24 +107,26 @@ export function handleNickname(type, value = null, forContext = null, { reset = 
     }
 
     if (forContext === ContextLevel.CHAT || !forContext) {
-        const metadata = getContext().chatMetadata[SETTNGS_NAME] ??= { chars: {}, personas: {} };
-        const chatTypeKey = type === 'char' ? 'personas' : 'chars';
+        const metadata = getContext().chatMetadata[SETTNGS_NAME] ??= { personas: {}, chars: {} };
+
+        const chatTypeKey = type === 'char' ? 'chars' : 'personas';
+        const nicknameKey = type === 'char' ? getCharKey() : getPersonaKey();
 
         // Reset -> return
         if (reset) {
-            delete metadata[chatTypeKey][type];
+            delete metadata[chatTypeKey][nicknameKey];
             saveChatDebounced();
             return null;
         }
         // Set -> return
         if (value) {
-            metadata[chatTypeKey][type] = value;
+            metadata[chatTypeKey][nicknameKey] = value;
             saveChatDebounced();
             return { context: ContextLevel.CHAT, name: value };
         }
         // Return if set
-        if (forContext || metadata[chatTypeKey][type]) {
-            return metadata[chatTypeKey][type];
+        if (forContext || metadata[chatTypeKey][nicknameKey]) {
+            return metadata[chatTypeKey][nicknameKey];
         }
     }
 
@@ -135,7 +137,7 @@ export function handleNickname(type, value = null, forContext = null, { reset = 
         }
 
         const charKey = getCharKey();
-        const nicknameKey = type === 'char' ? getCharKey() : getPersonaKey();
+        const nicknameKey = getPersonaKey();
 
         // Reset -> return
         if (reset) {
@@ -157,7 +159,7 @@ export function handleNickname(type, value = null, forContext = null, { reset = 
     }
 
     if (forContext === ContextLevel.GLOBAL || !forContext) {
-        const globalTypeKey = type === 'char' ? 'personas' : 'chars';
+        const globalTypeKey = type === 'char' ? 'chars' : 'personas';
         const nicknameKey = type === 'char' ? getCharKey() : getPersonaKey();
 
         // Reset -> return
