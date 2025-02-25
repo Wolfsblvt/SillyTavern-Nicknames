@@ -3,11 +3,29 @@ import { saveChatDebounced, saveSettingsDebounced, user_avatar } from '../../../
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
-import { commonEnumProviders, enumIcons } from '../../../slash-commands/SlashCommandCommonEnumsProvider.js';
+import { enumIcons } from '../../../slash-commands/SlashCommandCommonEnumsProvider.js';
 import { enumTypes, SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumValue.js';
 
 /** @type {string} Field name for the this extensions settings */
 const SETTNGS_NAME = 'nicknames';
+
+/** @enum {string} The context levels at which nicknames can be set */
+const ContextLevel = {
+    /** Set to global level, per account */
+    GLOBAL: 'global',
+    /** Set to character level (only available for personas) */
+    CHAR: 'char',
+    /** Set to chat level (saved with the chat file) */
+    CHAT: 'chat',
+    /** No context level (no nickname, using normal name) */
+    NONE: 'none',
+};
+
+/**
+ * @typedef {Object} NicknameResult
+ * @property {ContextLevel} context - The level at which this nickname is set
+ * @property {string?} name - The nickname
+ */
 
 /**
  * Settings object containing nickname mappings.
@@ -55,12 +73,20 @@ function getCharKey() {
     return getContext().characters[getContext().characterId]?.avatar;
 }
 
+/**
+ * Gets the nickname for the user, or original name if none exist
+ * @returns {string} The name
+ */
 function getUserNickname() {
-    return handleNickname('user');
+    return handleNickname('user').name;
 }
 
+/**
+ * Gets the nickname for the character, or original name if none exist
+ * @returns {string} The name
+ */
 function getCharNickname() {
-    return handleNickname('char');
+    return handleNickname('char').name;
 }
 
 /**
@@ -72,19 +98,19 @@ function getCharNickname() {
  * @param {object} [options] - Optional arguments
  * @param {boolean} [options.reset=false] - If true, the nickname will be reset to its default value
  *
- * @returns {string} The nickname value after handling
+ * @returns {NicknameResult?} The nickname value after handling
  */
 function handleNickname(type, value = null, forContext = null, { reset = false } = {}) {
     value = value?.trim();
 
-    if (forContext && !['chat', 'char', 'global'].includes(forContext)) {
+    if (forContext && !Object.values(ContextLevel).includes(forContext)) {
         throw new Error(`Unknown context: ${forContext}`);
     }
     if (!forContext && (value || reset)) {
         throw new Error('Can\'t set nickname or reset it without a context');
     }
 
-    if (forContext === 'chat' || !forContext) {
+    if (forContext === ContextLevel.CHAT || !forContext) {
         const metadata = getContext().chatMetadata[SETTNGS_NAME] ??= { chars: {}, personas: {} };
         const chatTypeKey = type === 'char' ? 'personas' : 'chars';
 
@@ -92,13 +118,13 @@ function handleNickname(type, value = null, forContext = null, { reset = false }
         if (reset) {
             delete metadata[chatTypeKey][type];
             saveChatDebounced();
-            return '';
+            return null;
         }
         // Set -> return
         if (value) {
             metadata[chatTypeKey][type] = value;
             saveChatDebounced();
-            return value;
+            return { context: ContextLevel.CHAT, name: value };
         }
         // Return if set
         if (forContext || metadata[chatTypeKey][type]) {
@@ -106,35 +132,35 @@ function handleNickname(type, value = null, forContext = null, { reset = false }
         }
     }
 
-    if (forContext === 'char' || !forContext) {
+    if (forContext === ContextLevel.CHAR || !forContext) {
         if (type === 'char' && (value || reset)) {
             toastr.warning('Cannot set character nickname on character level', 'Nicknames');
-            return '';
+            return null;
         }
 
         const charKey = getCharKey();
-        const nicknameKey = getPersonaKey();
+        const nicknameKey = type === 'char' ? getCharKey() : getPersonaKey();
 
         // Reset -> return
         if (reset) {
             delete settings.mappings.char[charKey]?.personas[nicknameKey];
             saveSettingsDebounced();
-            return '';
+            return null;
         }
         // Set -> return
         if (value) {
             settings.mappings.char[charKey] ??= { personas: {} };
             settings.mappings.char[charKey].personas[nicknameKey] = value;
             saveSettingsDebounced();
-            return value;
+            return { context: ContextLevel.CHAR, name: value };
         }
         // Return if set
         if (forContext || settings.mappings.char[charKey]?.personas[nicknameKey]) {
-            return settings.mappings.char[charKey]?.personas[nicknameKey];
+            return { context: ContextLevel.CHAR, name: settings.mappings.char[charKey]?.personas[nicknameKey] };
         }
     }
 
-    if (forContext === 'global' || !forContext) {
+    if (forContext === ContextLevel.GLOBAL || !forContext) {
         const globalTypeKey = type === 'char' ? 'personas' : 'chars';
         const nicknameKey = type === 'char' ? getCharKey() : getPersonaKey();
 
@@ -142,28 +168,28 @@ function handleNickname(type, value = null, forContext = null, { reset = false }
         if (reset) {
             delete settings.mappings.global[globalTypeKey][nicknameKey];
             saveSettingsDebounced();
-            return '';
+            return null;
         }
         // Set -> return
         if (value) {
             settings.mappings.global[globalTypeKey][nicknameKey] = value;
             saveSettingsDebounced();
-            return value;
+            return { context: ContextLevel.GLOBAL, name: value };
         }
         // Return if set
         if (forContext || settings.mappings.global[globalTypeKey][nicknameKey]) {
-            return settings.mappings.global[globalTypeKey][nicknameKey];
+            return { context: ContextLevel.GLOBAL, name: settings.mappings.global[globalTypeKey][nicknameKey] };
         }
     }
 
     // Default, if no nickname is set, just return the current default names
-    return type === 'char' ? getContext().name2 : getContext().name1;
+    return { context: ContextLevel.NONE, name: type === 'char' ? getContext().name2 : getContext().name1 };
 }
 
 /** @type {(args: { for: ('char'|'chat'|'global')? }, nickname: string) => string} */
 function nicknameUserCallback(args, nickname) {
     try {
-        return handleNickname('user', nickname, args.for, { reset: nickname === RESET_NICKNAME_LABEL });
+        return handleNickname('user', nickname, args.for, { reset: nickname === RESET_NICKNAME_LABEL })?.name ?? '';
     } catch (error) {
         toastr.error(`Error: ${error.message}`, 'Nicknames');
         return '';
@@ -173,7 +199,7 @@ function nicknameUserCallback(args, nickname) {
 /** @type {(args: { for: ('char'|'chat'|'global')? }, nickname: string) => string} */
 function nicknameCharCallback(args, nickname) {
     try {
-        return handleNickname('char', nickname, args.for, { reset: nickname === RESET_NICKNAME_LABEL });
+        return handleNickname('char', nickname, args.for, { reset: nickname === RESET_NICKNAME_LABEL })?.name ?? '';
     } catch (error) {
         toastr.error(`Error: ${error.message}`, 'Nicknames');
         return '';
@@ -193,7 +219,11 @@ function registerNicknamesSlashCommands() {
                 name: 'for',
                 description: 'The context for the nickname. Must be provided on set. If non provided for get, the actual used nickname (first defined) will be returned.',
                 typeList: [ARGUMENT_TYPE.STRING],
-                enumList: ['chat', 'char', 'global'],
+                enumList: [
+                    new SlashCommandEnumValue(ContextLevel.GLOBAL, null, enumTypes.namedArgument, 'G'),
+                    new SlashCommandEnumValue(ContextLevel.CHAR, null, enumTypes.enum, enumIcons.character),
+                    new SlashCommandEnumValue(ContextLevel.CHAT, null, enumTypes.enum, enumIcons.message),
+                ],
                 forceEnum: true,
             }),
         ],
@@ -225,7 +255,11 @@ function registerNicknamesSlashCommands() {
                 name: 'for',
                 description: 'The context for the nickname. Must be provided on set. If non provided for get, the actual used nickname (first defined) will be returned.',
                 typeList: [ARGUMENT_TYPE.STRING],
-                enumList: ['chat', 'user', 'global'],
+                enumList: [
+                    new SlashCommandEnumValue(ContextLevel.GLOBAL, null, enumTypes.namedArgument, 'G'),
+                    new SlashCommandEnumValue(ContextLevel.CHAR, null, enumTypes.enum, enumIcons.character),
+                    new SlashCommandEnumValue(ContextLevel.CHAT, null, enumTypes.enum, enumIcons.message),
+                ],
                 forceEnum: true,
             }),
         ],
