@@ -220,7 +220,7 @@ function registerNicknameEvents() {
 
             saveSettingsDebounced();
         });
-    getContext().eventSource.on(event_types.RENAMED_PAST_CHATS, /** @param {Array<Object>} chat @param {string} oldAvatarKey @param {string} newAvatarKey */
+    getContext().eventSource.on(event_types.RENAMED_PAST_CHAT, /** @param {Array<Object>} chat @param {string} oldAvatarKey @param {string} newAvatarKey */
         (chat, oldAvatarKey, newAvatarKey) => {
             if (!chat.length || !chat[0]['chat_metadata'] || typeof chat[0]['chat_metadata'] !== 'object') {
                 return;
