@@ -1,6 +1,6 @@
 import { extension_settings, getContext } from '../../../extensions.js';
-import { saveChatDebounced, saveSettingsDebounced, user_avatar } from '../../../../script.js';
-import { registerNicknamesSlashCommands } from './nicknamesSlashCommands.js';
+import { event_types, saveChatDebounced, saveSettingsDebounced, user_avatar } from '../../../../script.js';
+import { registerNicknamesSlashCommands } from './nicknameSlashCommands.js';
 
 /** @type {string} Field name for the this extensions settings */
 const SETTNGS_NAME = 'nicknames';
@@ -18,20 +18,25 @@ export const ContextLevel = {
 };
 
 /**
+ * Result of a nickname lookup
  * @typedef {Object} NicknameResult
  * @property {ContextLevel} context - The level at which this nickname is set
  * @property {string?} name - The nickname
  */
 
 /**
+ * Collection of mappings between characters/personas and nicknames
+ * @typedef {Object} NicknameMappings
+ * @property {{[personaKey: string]: string}} personas - Mapping of persona keys to a persona nickname.
+ * @property {{[charKey: string]: string}} chars - Mapping of character keys to a character nickname.
+ */
+
+/**
  * Settings object containing nickname mappings.
- *
  * @typedef {Object} NicknameSettings
  * @property {Object} mappings - Collection of mappings between characters/personas and nicknames
  * @property {{[charKey: string]: { personas: {[personaKey: string]: string}}}} mappings.char - Mapping of character keys to persona nicknames.
- * @property {Object} mappings.global - Global mappings for personas and characters
- * @property {{[personaKey: string]: string}} mappings.global.personas - Mapping of persona keys to a character nickname.
- * @property {{[charKey: string]: string}} mappings.global.chars - Mapping of character keys to a persona nickname.
+ * @property {NicknameMappings} mappings.global - Global mappings for personas and characters
  */
 
 /** @type {NicknameSettings} */
@@ -45,7 +50,8 @@ let settings = {
     },
 };
 
-async function loadSettings() {
+async function loadNicknameSettings() {
+    /** @type {NicknameSettings} */
     const loadedSettings = extension_settings[SETTNGS_NAME];
     if (!loadedSettings) {
         return;
@@ -107,26 +113,27 @@ export function handleNickname(type, value = null, forContext = null, { reset = 
     }
 
     if (forContext === ContextLevel.CHAT || !forContext) {
-        const metadata = getContext().chatMetadata[SETTNGS_NAME] ??= { personas: {}, chars: {} };
+        /** @type {NicknameMappings} */
+        const chatMappings = getContext().chatMetadata[SETTNGS_NAME] ??= { personas: {}, chars: {} };
 
         const chatTypeKey = type === 'char' ? 'chars' : 'personas';
         const nicknameKey = type === 'char' ? getCharKey() : getPersonaKey();
 
         // Reset -> return
         if (reset) {
-            delete metadata[chatTypeKey][nicknameKey];
+            delete chatMappings[chatTypeKey][nicknameKey];
             saveChatDebounced();
             return null;
         }
         // Set -> return
         if (value) {
-            metadata[chatTypeKey][nicknameKey] = value;
+            chatMappings[chatTypeKey][nicknameKey] = value;
             saveChatDebounced();
             return { context: ContextLevel.CHAT, name: value };
         }
         // Return if set
-        if (forContext || metadata[chatTypeKey][nicknameKey]) {
-            return metadata[chatTypeKey][nicknameKey];
+        if (forContext || chatMappings[chatTypeKey][nicknameKey]) {
+            return { context: ContextLevel.CHAT, name: chatMappings[chatTypeKey][nicknameKey] };
         }
     }
 
@@ -189,10 +196,50 @@ function registerNicknameMacros() {
     getContext().registerMacro('char', getCharNickname);
 }
 
+function registerNicknameEvents() {
+    getContext().eventSource.on(event_types.CHARACTER_RENAMED, /** @param {string} oldAvatarKey @param {string} newAvatarKey */
+        (oldAvatarKey, newAvatarKey) => {
+            // Migrate global mappings
+            if (settings.mappings.global.chars[oldAvatarKey]) {
+                settings.mappings.global.chars[newAvatarKey] = settings.mappings.global.chars[oldAvatarKey];
+                delete settings.mappings.global.chars[oldAvatarKey];
+            }
+            // Migrate char-level mappings
+            if (settings.mappings.char[oldAvatarKey]) {
+                settings.mappings.char[newAvatarKey] = settings.mappings.char[oldAvatarKey];
+                delete settings.mappings.char[oldAvatarKey];
+            }
+            // Migrate chat-level mappings
+            /** @type {NicknameMappings} */
+            const chatMappings = getContext().chatMetadata[SETTNGS_NAME];
+            if (chatMappings && chatMappings.chars[oldAvatarKey]) {
+                chatMappings.chars[newAvatarKey] = chatMappings.chars[oldAvatarKey];
+                delete chatMappings.chars[oldAvatarKey];
+                saveChatDebounced();
+            }
+
+            saveSettingsDebounced();
+        });
+    getContext().eventSource.on(event_types.RENAMED_PAST_CHATS, /** @param {Array<Object>} chat @param {string} oldAvatarKey @param {string} newAvatarKey */
+        (chat, oldAvatarKey, newAvatarKey) => {
+            if (!chat.length || !chat[0]['chat_metadata'] || typeof chat[0]['chat_metadata'] !== 'object') {
+                return;
+            }
+            /** @type {NicknameMappings} */
+            const chatMappings = chat[0]['chat_metadata'][SETTNGS_NAME];
+            if (chatMappings && chatMappings.chars[oldAvatarKey]) {
+                chatMappings.chars[newAvatarKey] = chatMappings.chars[oldAvatarKey];
+                delete chatMappings.chars[oldAvatarKey];
+            }
+            // No save, we are modifying an unloaded temporarily queried chat via event here
+        });
+}
+
 // This function is called when the extension is loaded
 $(async () => {
-    loadSettings();
+    loadNicknameSettings();
     registerNicknamesSlashCommands();
     registerNicknameMacros();
+    registerNicknameEvents();
 });
 
