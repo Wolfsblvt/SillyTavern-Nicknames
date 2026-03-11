@@ -2,6 +2,9 @@
 
 *An Extension allowing you to set nicknames for both characters and personas. The nicknames will be used in prompts towards the model.*
 
+> [!IMPORTANT]  
+> This extension is currently under development, and not intended for any productive use. Features might not work, and no documentation exists.
+
 ## Concept
 
 This allows for longer and more detailed names to be displayed in the chat menu, character list and other places, but let's the model work with the actual name you want to be used in messages.
